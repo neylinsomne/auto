@@ -9,6 +9,9 @@ load_dotenv()
 
 app = FastAPI()
 
+@app.get("/")
+def root():
+    return {"message": "Hola desde Vercel con FastAPI!"}
 
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
