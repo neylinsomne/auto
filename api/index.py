@@ -1,10 +1,9 @@
 from fastapi import FastAPI, Request
 from utils.token_exchange import exchange_code_for_token
-import uvicorn
-import subprocess
 import os
 import requests
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = FastAPI()
@@ -15,13 +14,6 @@ def root():
 
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
-# obtener autorización si no hay token aún
-# if not ACCESS_TOKEN:
-#     print("No ACCESS_TOKEN found. Launching browser to authorize...")
-#     subprocess.run(["python", "step_1_auth.py"])
-#     print("Waiting for /callback to receive code...")
-# else:
-#     print("ACCESS_TOKEN already set.")
 if not ACCESS_TOKEN:
     print("No ACCESS_TOKEN found. Please authenticate manually via /callback.")
 else:
@@ -34,11 +26,9 @@ async def callback(request: Request):
     if not code:
         return {"error": "No code provided"}
 
-   
-    token_data = exchange_code_for_token(code) # Intercambiar el código por un access_token
+    token_data = exchange_code_for_token(code)
     ACCESS_TOKEN = token_data.get("access_token")
 
-    # Guardar después en un json o algo :P
     print("Token recibido:", ACCESS_TOKEN)
 
     return {"message": "Token received!", "access_token": ACCESS_TOKEN}
@@ -58,6 +48,3 @@ def get_templates():
         return response.json()
     else:
         return {"error": response.status_code, "details": response.text}
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
