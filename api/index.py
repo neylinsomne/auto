@@ -16,10 +16,14 @@ def root():
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
 # obtener autorización si no hay token aún
+# if not ACCESS_TOKEN:
+#     print("No ACCESS_TOKEN found. Launching browser to authorize...")
+#     subprocess.run(["python", "step_1_auth.py"])
+#     print("Waiting for /callback to receive code...")
+# else:
+#     print("ACCESS_TOKEN already set.")
 if not ACCESS_TOKEN:
-    print("No ACCESS_TOKEN found. Launching browser to authorize...")
-    subprocess.run(["python", "step_1_auth.py"])
-    print("Waiting for /callback to receive code...")
+    print("No ACCESS_TOKEN found. Please authenticate manually via /callback.")
 else:
     print("ACCESS_TOKEN already set.")
 
