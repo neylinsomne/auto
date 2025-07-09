@@ -1,6 +1,6 @@
 from sentence_transformers import SentenceTransformer, util
 #sentence-transformers
-from messages import obtener_mensajes
+from Automatizacion.api.src.conversaciones_messages import obtener_mensajes
 intenciones = {
     "reembolso": [
         "quiero un reembolso",

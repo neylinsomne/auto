@@ -1,128 +1,125 @@
+
 import os
 import requests
 from dotenv import load_dotenv
+import pandas as pd
+
+
 load_dotenv()
-# API_URL = "https://api2.frontapp.com"
-# API_KEY = os.getenv("API_KEY") 
-# HEADERS = {
-#     "Authorization": f"Bearer {API_KEY}"
-# }
-OAUTH_URL = "https://api2.frontapp.com/auth/token"
-CLIENT_ID = os.getenv("CLIENT_ID")
-CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 
-def check_api_key():
-    url = "https://api2.frontapp.com/me"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('API_KEY')}"
+API_URL = "https://familify.api.frontapp.com"
+STATIC_API_KEY = os.getenv("API_KEY")
+TEAM_ID = "tim_4mhec"
+
+def get_headers():
+    return {
+        "Authorization": STATIC_API_KEY,  
+        "Accept": "application/json"
     }
+
+def get_all_templates(headers):
+    url = f"{API_URL}/teams/{TEAM_ID}/message_templates"
     response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        for template in data.get("_results", []):
+            print(f"ID: {template['id']}")
+            print(f"Nombre: {template['name']}")
+            print(f"Asunto: {template['subject']}")
+            print(f"Disponible para todos: {template['is_available_for_all_inboxes']}")
+            print("-" * 50)
+    else:
+            print("Error:", response.status_code, response.text)
 
-    print("Status code:", response.status_code)
-    print("Response:")
-    print(response.text)
 
-
-
-def get_oauth_token():
-    response = requests.post(OAUTH_URL, data={
-        "grant_type": "client_credentials",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET
-    })
+def get_all_templates_df(headers):
+    url = f"{API_URL}/teams/{TEAM_ID}/message_templates"
+    response = requests.get(url, headers=headers)
     
     if response.status_code == 200:
-        token = response.json()['access_token']
-        return token
+        data = response.json()
+        templates = []
+
+        for template in data.get("_results", []):
+            templates.append({
+                "id": template.get("id"),
+                "name": template.get("name"),
+                "subject": template.get("subject"),
+                "is_available_for_all_inboxes": template.get("is_available_for_all_inboxes"),
+                "created_at": template.get("created_at"),
+                "updated_at": template.get("updated_at"),
+                "body": template.get("body")
+            })
+        
+        df = pd.DataFrame(templates)
+        return df
     else:
-        print("Error getting token:", response.status_code, response.text)
+        print("Error:", response.status_code, response.text)
         return None
 
 
 
-def get_all_template_folders():
-    url = "https://api2.frontapp.com/message_template_folders"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('API_KEY')}"
+
+def manejo_categoria(df, col):
+    print(df[col].unique())
+    category_map = {
+        'CANCELAR': 'cancel_es',
+        'CANCEL': 'cancel_en',
+        'Desuscribir': 'cancel_es',
+        'UNSUSCRIBE': 'cancel_en',
+        'REEMBOLSO ': 'refund_es',
+        'Refund': 'refund_en',
+        'REFUND': 'refund_en',
+        'Reembolso ': 'refund_es',
+        'REEMBOLSO REALIZADO ': 'refund_done_es',
+        'REEMBOLSO FINALIZADO': 'refund_done_es',
+        'Reembolso Storybook': 'refund_es',
+        'refund 50%': 'refund_partial_en',
+        'PROBLEMA APP': 'app_issue_es',
+        'APP PROBLEM': 'app_issue_en',
+        'PROBLEMA TARJETA': 'payment_issue_es',
+        'CHANGE THE LANGUAGE': 'change_lang_en',
+        'Cambiar correo': 'email_change_es',
+        'Email': 'email_en',
+        'Account': 'account_en',
+        'Cuenta': 'account_es',
+        'Cambio de dispositivo ': 'device_change_es',
+        'CUPÓN': 'coupon_es',
+        'ACTIVAR TIEMPO': 'activation_es',
+        'PAY PAL': 'paypal',
+        'INFORMACIÓN': 'info_es',
+        'Información': 'info_es',
+        'MAIL': 'email_en',
+        'USUARIO PRIVILEGIADO': 'special_user_es',
+        'Reseña': 'review_es',
+        'Canjear': 'redeem_es',
+        '': 'unknown',
+        None: 'unknown'
     }
-    response = requests.get(url, headers=headers)
-    return response.json().get("results", [])
+    df['subject_category'] = df['subject'].map(category_map)
+    return df
 
-def get_all_templates():
-    url = f"{API_URL}/message_templates"
-    response = requests.get(url, headers=HEADERS)
-
-    if response.status_code != 200:
-        print(f"Error: {response.status_code} - {response.text}")
-        return []
-
-    return response.json().get("results", [])
-
-def main():
-    
-    folders=get_all_template_folders()
-    templates = get_all_templates()
-    print("Folders found:", folders)
-    print(f"Found {len(templates)} templates.")
-    for t in templates:
-        print(f"- [{t['id']}] {t['name']}")
-        print(f"  Subject: {t.get('subject', '')}")
-        print(f"  Body: {t.get('body', '')[:80]}...")  # Solo primera parte del cuerpo
-        print()
-
-def get_teams():
-    url = f"{API_URL}/teams"
-    response = requests.get(url, headers=HEADERS)
-    if response.status_code == 200:
-        return response.json().get("results", [])
-    else:
-        print("Error al obtener equipos:", response.status_code, response.text)
-        return []
-    
-def get_templates_by_team(team_id):
-    url = f"{API_URL}/teams/{team_id}/message_templates"
-    response = requests.get(url, headers=HEADERS)
-    return response.json().get("results", [])
+# FUNCION A LLAMAR
+def get_templates():
+    headers=get_headers()
+    df=get_all_templates_df(headers)
+    df=manejo_categoria(df,"subject")
+    return df
 
 
-def get_folders_by_team(team_id):
-    url = f"{API_URL}/teams/{team_id}/message_template_folders"
-    response = requests.get(url, headers=HEADERS)
-    return response.json().get("results", [])
-
-def mama():
-    teams = get_teams()
-    print(f"Equipos encontrados: {len(teams)}")
-    for team in teams:
-        print(f" Equipo: {team['name']} ({team['id']})")
-
-        folders = get_folders_by_team(team["id"])
-        print(f"   Carpetas: {len(folders)}")
-        for folder in folders:
-            print(f"    - {folder['name']} ({folder['id']})")
-
-        templates = get_templates_by_team(team["id"])
-        print(f"   Plantillas: {len(templates)}")
-        for t in templates:
-            print(f"    - {t['name']} | Subject: {t.get('subject', '')}")
-
-def get_me():
-    url = f"{API_URL}/me"
-    response = requests.get(url, headers=HEADERS)
-    print(" endpoint /me: ",response.json())
-
-if __name__ == "__main__":
-    # check_api_key()
-    # get_me()
-    # main()
-    print(CLIENT_ID)
-    print(CLIENT_SECRET)
-    access_token = get_oauth_token()
-    if access_token:
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
-        response = requests.get("https://api2.frontapp.com/message_templates", headers=headers)
-        print(response.status_code)
-        print(response.text)
-        #mama()
+if __name__=="__main__":
+    headers=get_headers()
+    print("Tomando Templates")
+    get_all_templates(headers)
+    df=get_all_templates_df(headers)
+    print("Los Templates se ven asi:")
+    print("-" * 50)
+    print( df.head(5))
+    print( df.shape[0])
+    print("-" * 50)
+    print("\n ")
+    df=manejo_categoria(df,"subject")
+    #dfa=agrupar_categoria(df)
+    #print(dfa)
+   
+    print()

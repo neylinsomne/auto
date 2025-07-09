@@ -1,7 +1,7 @@
 import json
 from front_connector import FrontConnector
 from classifier import clasificar_mensaje
-from templates import cargar_plantilla
+from Automatizacion.api.src.solicitudes import cargar_plantilla
 from util import handle_rate_limiting
 
 with open("examples/example_messages.json", "r", encoding="utf-8") as f:
