@@ -3,7 +3,7 @@ import os
 import requests
 from dotenv import load_dotenv
 import pandas as pd
-
+from utils.upa import limpiar_html
 
 load_dotenv()
 
@@ -16,6 +16,7 @@ def get_headers():
         "Authorization": STATIC_API_KEY,  
         "Accept": "application/json"
     }
+
 
 def get_all_templates(headers):
     url = f"{API_URL}/teams/{TEAM_ID}/message_templates"
@@ -32,7 +33,8 @@ def get_all_templates(headers):
             print("Error:", response.status_code, response.text)
 
 
-def get_all_templates_df(headers):
+def get_all_templates_df():
+    headers=get_headers()
     url = f"{API_URL}/teams/{TEAM_ID}/message_templates"
     response = requests.get(url, headers=headers)
     
@@ -41,15 +43,18 @@ def get_all_templates_df(headers):
         templates = []
 
         for template in data.get("_results", []):
+            x=limpiar_html(template.get("body"))
             templates.append({
+                
                 "id": template.get("id"),
                 "name": template.get("name"),
                 "subject": template.get("subject"),
-                "is_available_for_all_inboxes": template.get("is_available_for_all_inboxes"),
+                #"is_available_for_all_inboxes": template.get("is_available_for_all_inboxes"),
                 "created_at": template.get("created_at"),
                 "updated_at": template.get("updated_at"),
-                "body": template.get("body")
+                "body": x
             })
+            
         
         df = pd.DataFrame(templates)
         return df

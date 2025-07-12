@@ -1,136 +1,77 @@
-import os
-import requests
-from dotenv import load_dotenv
 
-load_dotenv()
-
-API_URL = "https://familify.api.frontapp.com"
-STATIC_API_KEY = os.getenv("API_KEY")  
-
-# === Headers ===
-def get_headers():
-    return {
-        "Authorization": STATIC_API_KEY,  
-        "Accept": "application/json"
-    }
-
-# === API Calls ===
-def get_me(headers):
-    url = f"{API_URL}/me"
-    response = requests.get(url, headers=headers)
-    print("\n🧑 Respuesta de /me:")
-    print(response.status_code, response.json())
+from difflib import SequenceMatcher
+import pandas as pd
+from templates import get_all_templates_df
+from conversaciones_messages import construir_df_multiples_conversaciones
 
 
-def get_ans(headers):
-    url = f"{API_URL}/answers"
-    response = requests.get(url, headers=headers)
-    print("\n📚 Respuesta de /answers:")
-    print(response.status_code, response.json())
 
+def mensaje_similar_a_template(mensaje: str, df_templates: pd.DataFrame, umbral: float = 0.9) -> dict | None:
+    """
+    Compara el mensaje con cada template y devuelve un dict con name, subject y body
+    si encuentra una coincidencia que supere el umbral.
+    """
+    mensaje = mensaje.strip().lower()
+    mejor_match = None
+    mejor_ratio = 0
 
-def get_all_template_folders(headers):
-    url = f"{API_URL}/message_template_folders"
-    response = requests.get(url, headers=headers)
-    return response.json().get("results", [])
+    for _, template in df_templates.iterrows():
+        ratio = SequenceMatcher(None, mensaje, template["body"].lower()).ratio()
+        if ratio > mejor_ratio and ratio >= umbral:
+            mejor_ratio = ratio
+            mejor_match = {
+                "name": template["name"],
+                "subject": template["subject"],
+                "body": template["body"]
+            }
 
+    return mejor_match
 
-def get_all_templates(headers):
-    templates = []
-    url = f"{API_URL}/message_templates?limit=100"
+    
+# para hacer la conexión entre popo y pollo
+def add_template(df_mensajes: pd.DataFrame, df_templates: pd.DataFrame) -> pd.DataFrame:
+    """
+    Agrega al DataFrame de mensajes columnas con el template usado si fue respondido:
+    name, subject y body del template.
+    """
+    nombres, subjects, bodies = [], [], []
 
-    while url:
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            print(f"❌ Error: {response.status_code} - {response.text}")
-            break
-        
-        data = response.json()
-        page_templates = data.get("results", [])
-        templates.extend(page_templates)
-
-        # Obtener el siguiente link de paginación
-        pagination = data.get("_pagination", {})
-        url = pagination.get("next")  # Si es None, termina
-
-    return templates
-
-
-def get_templates_in_folders(headers):
-    print("\n📂 Buscando plantillas dentro de carpetas...")
-    folders = get_all_template_folders(headers)
-    all_templates = []
-
-    for folder in folders:
-        folder_id = folder["id"]
-        folder_name = folder.get("name", "Sin nombre")
-        print(f"\n- Carpeta: {folder_name} ({folder_id})")
-
-        url = f"{API_URL}/message_template_folders/{folder_id}/message_templates"
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            templates = r.json().get("results", [])
-            print(f"  ✉️ Plantillas encontradas: {len(templates)}")
-            for t in templates:
-                print(f"   - {t['name']} | Subject: {t.get('subject', '')}")
-            all_templates.extend(templates)
+    for _, row in df_mensajes.iterrows():
+        if row["respondido"] and pd.notnull(row["msg_nuestro"]):
+            match = mensaje_similar_a_template(row["msg_nuestro"], df_templates)
+            if match:
+                nombres.append(match["name"])
+                subjects.append(match["subject"])
+                bodies.append(match["body"])
+            else:
+                nombres.append(None)
+                subjects.append(None)
+                bodies.append(None)
         else:
-            print(f"  ⚠️ Error al obtener templates: {r.status_code} {r.text}")
-    return all_templates
+            nombres.append(None)
+            subjects.append(None)
+            bodies.append(None)
 
+    df_mensajes = df_mensajes.copy()
+    df_mensajes["template_name"] = nombres
+    df_mensajes["template_subject"] = subjects
+    df_mensajes["template_body"] = bodies
 
-def get_teams(headers):
-    url = f"{API_URL}/teams"
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print(f"Error al obtener teams: {response.status_code} - {response.text}")
-        return []
-    return response.json().get("results", [])
-
-def get_team_templates(team_id, headers):
-    url = f"{API_URL}/teams/{team_id}/message_templates?limit=100"
-    templates = []
-    while url:
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            print(f"Error al obtener plantillas del team {team_id}: {response.status_code} - {response.text}")
-            break
-        data = response.json()
-        templates += data.get("results", [])
-        url = data.get("_pagination", {}).get("next")
-    return templates
-
-def get_all_shared_templates(headers):
-    teams = get_teams(headers)
-    all_templates = []
-    for team in teams:
-        print(f"🔍 Revisando plantillas del equipo: {team['name']} ({team['id']})")
-        team_templates = get_team_templates(team['id'], headers)
-        print(f"  ✉️ Plantillas encontradas: {len(team_templates)}")
-        all_templates.extend(team_templates)
-    return all_templates
+    return df_mensajes
 
 
 
 
-
-def ver_plantillas_personales(headers):
-    print("\n🙋 TEMPLATES PERSONALES:")
-    folders = get_all_template_folders(headers)
-    templates = get_all_templates(headers)
-    print(f"Carpetas personales: {len(folders)}")
-    print(f"Plantillas personales: {len(templates)}")
-    for t in templates:
-        print(f"- {t['name']} (ID: {t['id']})")
-        print(f"  Subject: {t.get('subject', '')}")
-        print(f"  Body: {t.get('body', '')[:60]}...")
-        print()
+def template_a_clasificacion(df_mensajes: pd.DataFrame, df_templates: pd.DataFrame) -> pd.DataFrame:
+    
 
 
-# === MAIN ===
+
+def main():
+    o=1
+
 if __name__ == "__main__":
-    headers = get_headers()
-
-    print("\n🔐 Probando autenticación...")
-    get_me(headers)
-
+    df=add_template(construir_df_multiples_conversaciones(limit=10),get_all_templates_df())
+    print(df.info)
+    print(df.head())
+    print(df.columns)

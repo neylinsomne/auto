@@ -1,10 +1,10 @@
 
 import requests
-from bs4 import BeautifulSoup
+
 import os
 from dotenv import load_dotenv
 import pandas as pd 
-from difflib import SequenceMatcher
+from utils.upa import limpiar_html
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY") 
@@ -15,56 +15,7 @@ HEADERS = {
 
 BASE_URL = 'https://api2.frontapp.com'
 
-def obtener_conversaciones_inbox(limit=10,id="inb_bhllg"):
-    url = f'{BASE_URL}/inboxes/{id}/conversations?limit={limit}'
-    response = requests.get(url, headers=HEADERS)
-    response.raise_for_status()
 
-    conversaciones = response.json().get('_results', [])
-    conversaciones_completas = []
-
-    for conv in conversaciones:
-        conv_id = conv['id']
-        subject = conv.get('subject')
-        tags = [tag.get('name') for tag in conv.get('tags', [])]
-        recipient = conv.get('recipient', {}).get('handle', '')
-
-        # Traemos los mensajes de esta conversación
-        mensajes_url = f"{BASE_URL}/conversations/{conv_id}/messages"
-        mensajes_resp = requests.get(mensajes_url, headers=HEADERS)
-        mensajes_resp.raise_for_status()
-        mensajes = mensajes_resp.json().get('_results', [])
-
-        # Guardamos todos los mensajes asociados
-        mensajes_lista = []
-        for m in mensajes:
-            cuerpo = m.get("body", "")
-            mensajes_lista.append(cuerpo.strip() or "[Mensaje vacío]")
-
-        # Guardamos toda la conversación como un dict
-        conversaciones_completas.append({
-            "conversacion_id": conv_id,
-            "subject": subject,
-            "recipient": recipient,
-            "tags_conversacion": tags,
-            "mensajes": mensajes_lista,
-        })
-
-    return conversaciones_completas
-
-
-def obtener_mensajes_nuestros(mensajes: list) -> list:
-    """
-    Retorna los mensajes enviados por nuestro equipo (is_inbound == False).
-    """
-    return [m for m in mensajes if not m.get("is_inbound")]
-
-
-def ya_respondimos(mensajes: list) -> bool:
-    """
-    Retorna True si ya existe al menos una respuesta nuestra (is_inbound == False).
-    """
-    return any(not m.get("is_inbound") for m in mensajes)
 
 
 def obtener_ultimo_mensaje_usuario(mensajes: list) -> dict:
@@ -83,19 +34,74 @@ def obtener_ultimo_mensaje_usuario(mensajes: list) -> dict:
     return mensajes_usuario[-1]
 
 
-def mensaje_similar_a_template(mensaje: str, df_templates: pd.DataFrame, umbral: float = 0.9) -> str | None:
-    """
-    Compara el mensaje con cada template en el DataFrame.
-    Devuelve el template más similar si supera el umbral.
-    """
-    mensaje = mensaje.strip().lower()
-    for template in df_templates["texto"]:
-        ratio = SequenceMatcher(None, mensaje, template.lower()).ratio()
-        if ratio >= umbral:
-            return template
-    return None
+def construir_df_multiples_conversaciones(limit=100, inbox_id="inb_bhllg"):
+    url = f'{BASE_URL}/inboxes/{inbox_id}/conversations?limit={limit}'
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+
+    conversaciones = response.json().get('_results', [])
+    filas = []
+
+    for conv in conversaciones:
+        conv_id = conv['id']
+
+        
+        mensajes_url = f"{BASE_URL}/conversations/{conv_id}/messages"
+        mensajes_resp = requests.get(mensajes_url, headers=HEADERS)
+        mensajes_resp.raise_for_status()
+        mensajes_data = mensajes_resp.json()
+
+        
+        df_conversacion = construir_df_conversacion(mensajes_data)
+
+       
+        if not df_conversacion.empty:
+            filas.append(df_conversacion)
+
+    # Concatenar todas las filas
+    if filas:
+        return pd.concat(filas, ignore_index=True)
+    else:
+        return pd.DataFrame(columns=[
+            "id_conversacion", "msg_cliente", "msg_cliente_id", 
+            "respondido", "msg_nuestro", "msg_nuestro_id"
+        ])
 
 
+
+
+def construir_df_conversacion(data):
+    mensajes = data["_results"]
+    
+    if len(mensajes) < 1:
+        return pd.DataFrame(columns=[
+            "id_conversacion", "msg_cliente", "msg_cliente_id", 
+            "respondido", "msg_nuestro", "msg_nuestro_id"
+        ])
+
+    def extraer_texto_limpio(msg):
+        return msg.get("text") or limpiar_html(msg.get("body", ""))
+
+    # Tomamos el último mensaje recibido (cliente) y penúltimo (nosotros)
+    msg_cliente = next((m for m in mensajes if m.get("is_inbound")), None)
+    msg_nuestro = next((m for m in mensajes if not m.get("is_inbound")), None)
+    
+    
+    id_conversacion = mensajes[0]["_links"]["related"]["conversation"].split("/")[-1]
+
+    fila = {
+        "id_conversacion": id_conversacion,
+        "msg_cliente": extraer_texto_limpio(msg_cliente) if msg_cliente else None,
+        "msg_cliente_id": msg_cliente["id"] if msg_cliente else None,
+        "respondido": msg_nuestro is not None,
+        "msg_nuestro": extraer_texto_limpio(msg_nuestro) if msg_nuestro else None,
+        "msg_nuestro_id": msg_nuestro["id"] if msg_nuestro else None
+    }
+
+    return pd.DataFrame([fila])
+
+
+#+------------------------------------------- TROUBLESHOOTING------------------------------------------
 def obtener_conversaciones(limit=10):
     url = f'{BASE_URL}/conversations?limit={limit}'
     response = requests.get(url, headers=HEADERS)
@@ -135,10 +141,46 @@ def obtener_conversaciones(limit=10):
 
 
 
+def obtener_conversaciones_inbox(limit=10,id="inb_bhllg"):
+    url = f'{BASE_URL}/inboxes/{id}/conversations?limit={limit}'
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+
+    conversaciones = response.json().get('_results', [])
+    conversaciones_completas = []
+
+    for conv in conversaciones:
+        conv_id = conv['id']
+        subject = conv.get('subject')
+        tags = [tag.get('name') for tag in conv.get('tags', [])]
+        recipient = conv.get('recipient', {}).get('handle', '')
+
+        
+        mensajes_url = f"{BASE_URL}/conversations/{conv_id}/messages"
+        mensajes_resp = requests.get(mensajes_url, headers=HEADERS)
+        mensajes_resp.raise_for_status()
+        mensajes = mensajes_resp.json().get('_results', [])
+
+        
+        mensajes_lista = []
+        for m in mensajes:
+            cuerpo = m.get("body", "")
+            mensajes_lista.append(cuerpo.strip() or "[Mensaje vacío]")
+
+        # Guardamos toda la conversación como un dict
+        conversaciones_completas.append({
+            "conversacion_id": conv_id,
+            "subject": subject,
+            "recipient": recipient,
+            "tags_conversacion": tags,
+            "mensajes": mensajes_lista,
+        })
+
+    return conversaciones_completas
 
 
-# === MOSTRAR RESULTADOS ===
-if __name__ == "__main__":
+
+def main():
     conversaciones = obtener_conversaciones_inbox()
 
     for i, conv in enumerate(conversaciones):
@@ -153,3 +195,13 @@ if __name__ == "__main__":
             #print(f"Mensaje {j+1}:\n{mensaje}\n")
             texto_limpio = limpiar_html(mensaje)
             print(f"Mensaje {j+1}:\n{texto_limpio}\n")
+# === MOSTRAR RESULTADOS ===
+
+
+if __name__ == "__main__":
+    #main()
+    df=construir_df_multiples_conversaciones(limit=10)
+    print(df.columns)
+    print(df.info())
+    print(df.head())
+    

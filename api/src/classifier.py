@@ -1,6 +1,7 @@
 from sentence_transformers import SentenceTransformer, util
 #sentence-transformers
-from Automatizacion.api.src.conversaciones_messages import obtener_mensajes
+from conversaciones_messages import obtener_mensajes
+from utils.upa import limpiar_html
 intenciones = {
     "reembolso": [
         "quiero un reembolso",
@@ -62,6 +63,102 @@ intenciones = {
 
 modelo = SentenceTransformer('paraphrase-MiniLM-L6-v2')  
 
+
+intencion_embeddings = {
+    etiqueta: modelo.encode(ejemplos, convert_to_tensor=True)
+    for etiqueta, ejemplos in intenciones.items()
+}
+
+# ------------------------------
+# Detectar conectores lógicos
+# ------------------------------
+
+CONECTORES = [
+    r"si no", r"pero", r"aunque", r"caso contrario",
+    r"de lo contrario", r"sin embargo", r"excepto que"
+]
+
+def dividir_por_conectores(texto: str) -> list:
+    """
+    Divide el texto por conectores lógicos usando expresiones regulares.
+    """
+    pattern = '|'.join(CONECTORES)
+    fragmentos = re.split(pattern, texto.lower())
+    return [frag.strip() for frag in fragmentos if frag.strip()]
+
+
+# ------------------------------
+# Clasificación por fragmento
+# ------------------------------
+
+def clasificar_fragmento(texto: str, umbral=0.5):
+    emb = modelo.encode(texto, convert_to_tensor=True)
+    intenciones_detectadas = []
+
+    for etiqueta, ejemplo_embs in intencion_embeddings.items():
+        sim = util.cos_sim(emb, ejemplo_embs).max().item()
+        if sim >= umbral:
+            intenciones_detectadas.append((etiqueta, sim))
+
+    intenciones_detectadas.sort(key=lambda x: x[1], reverse=True)
+    return intenciones_detectadas
+
+
+# ------------------------------
+# Clasificación completa con conectores
+# ------------------------------
+
+def clasificar_mensaje_conectado(texto: str, umbral=0.5):
+    fragmentos = dividir_por_conectores(texto)
+    resultados = []
+
+    for frag in fragmentos:
+        resultado = clasificar_fragmento(frag, umbral)
+        resultados.extend(resultado)
+
+    # Agrupar por intención y quedarnos con el score máximo
+    agrupado = {}
+    for etiqueta, sim in resultados:
+        if etiqueta not in agrupado or agrupado[etiqueta] < sim:
+            agrupado[etiqueta] = sim
+
+    return {
+        "mensaje": texto,
+        "intenciones_detectadas": sorted(agrupado.items(), key=lambda x: x[1], reverse=True)
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##########################################
 intencion_embeddings = {}
 for etiqueta, ejemplos in intenciones.items():
     intencion_embeddings[etiqueta] = modelo.encode(ejemplos, convert_to_tensor=True)
@@ -105,9 +202,10 @@ def procesar_y_clasificar():
     mensajes = obtener_mensajes(limit=3)  # Puedes cambiar el límite
     resultado = []
     for m in mensajes:
-        clasificacion = clasificar_mensaje(m['mensaje'])
+        mensaje_limpio=limpiar_html(m['mensaje'])
+        clasificacion = clasificar_mensaje(mensaje_limpio)
         resultado.append({
-            "mensaje": m["mensaje"],
+            "mensaje": mensaje_limpio,
             "etiquetas_originales": m["etiquetas"],
             "clasificacion": clasificacion
         })
