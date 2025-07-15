@@ -34,7 +34,11 @@ def obtener_ultimo_mensaje_usuario(mensajes: list) -> dict:
     return mensajes_usuario[-1]
 
 
-def construir_df_multiples_conversaciones(limit=100, inbox_id="inb_bhllg"):
+def construir_df_multiples_conversaciones(limit=100, inbox_id="inb_bhllg")->pd.DataFrame:
+    """
+    Retorna el último mensaje enviado por el usuario (is_inbound=True).
+    Si no hay mensajes entrantes, retorna None.
+    """
     url = f'{BASE_URL}/inboxes/{inbox_id}/conversations?limit={limit}'
     response = requests.get(url, headers=HEADERS)
     response.raise_for_status()
@@ -67,10 +71,43 @@ def construir_df_multiples_conversaciones(limit=100, inbox_id="inb_bhllg"):
             "respondido", "msg_nuestro", "msg_nuestro_id"
         ])
 
+def construir_df_conversaciones_archivadas(limit=50) -> pd.DataFrame:
+    """
+    Descarga conversaciones archivadas y construye un DataFrame con:
+    - msg_cliente
+    - msg_nuestro
+    - respondido
+    """
+    url = f"{BASE_URL}/conversations?q=status:archived&limit={limit}"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    conversaciones = response.json().get("_results", [])
+
+    filas = []
+
+    for conv in conversaciones:
+        conv_id = conv['id']
+        mensajes_url = f"{BASE_URL}/conversations/{conv_id}/messages"
+        mensajes_resp = requests.get(mensajes_url, headers=HEADERS)
+        mensajes_resp.raise_for_status()
+        mensajes_data = mensajes_resp.json()
+
+        df_conversacion = construir_df_conversacion(mensajes_data)
+
+        if not df_conversacion.empty:
+            filas.append(df_conversacion)
+
+    if filas:
+        return pd.concat(filas, ignore_index=True)
+    else:
+        return pd.DataFrame(columns=[
+            "id_conversacion", "msg_cliente", "msg_cliente_id", 
+            "respondido", "msg_nuestro", "msg_nuestro_id"
+        ])
 
 
 
-def construir_df_conversacion(data):
+def construir_df_conversacion(data)->pd.DataFrame:
     mensajes = data["_results"]
     
     if len(mensajes) < 1:

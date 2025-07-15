@@ -2,8 +2,8 @@
 from difflib import SequenceMatcher
 import pandas as pd
 from templates import get_all_templates_df
-from conversaciones_messages import construir_df_multiples_conversaciones
-
+from conversaciones_messages import construir_df_multiples_conversaciones, construir_df_conversaciones_archivadas
+from tag import add_tag_revisar
 
 
 def mensaje_similar_a_template(mensaje: str, df_templates: pd.DataFrame, umbral: float = 0.9) -> dict | None:
@@ -63,7 +63,11 @@ def add_template(df_mensajes: pd.DataFrame, df_templates: pd.DataFrame) -> pd.Da
 
 
 def template_a_clasificacion(df_mensajes: pd.DataFrame, df_templates: pd.DataFrame) -> pd.DataFrame:
+    df=clasificar(df)
     
+    for _,row in df.iterrows():
+        if row.value_ <0.3:
+            add_tag_revisar(row.id_message)
 
 
 

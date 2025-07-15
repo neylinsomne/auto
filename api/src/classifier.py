@@ -1,7 +1,9 @@
-from sentence_transformers import SentenceTransformer, util
+
 #sentence-transformers
 from conversaciones_messages import obtener_mensajes
 from utils.upa import limpiar_html
+import re
+from sentence_transformers import SentenceTransformer, util
 intenciones = {
     "reembolso": [
         "quiero un reembolso",
@@ -131,7 +133,12 @@ def clasificar_mensaje_conectado(texto: str, umbral=0.5):
 
 
 
-
+def extraer_subject(mensaje: str) -> str:
+    resultado = clasificar_mensaje_conectado(mensaje)
+    intenciones = resultado.get("intenciones_detectadas", [])
+    if intenciones:
+        return intenciones[0][0]  # etiqueta de mayor score
+    return "intencion_desconocida"
 
 
 
